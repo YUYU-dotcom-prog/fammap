@@ -43,3 +43,6 @@ REQUEST_DELAY: float = 0.15
 
 # Gemini AI API 키
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
+
+# Firebase 키 파일 경로
+FIREBASE_KEY_PATH: str = os.getenv("FIREBASE_KEY_PATH", "firebase_key.json")
