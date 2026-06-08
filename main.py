@@ -247,6 +247,7 @@ def recommend_crops(
     lon: float = Query(..., description="경도"),
     location: str = Query(..., description="지역명"),
     date: str = Query(default=None, description="기준일자 YYYYMMDD"),
+    authorization: str = Header(default=None),
 ):
     """🌾 귀농인 맞춤 작물 추천 (기상+토양+병해충 데이터 AI 분석)"""
     validate_lat_lon(lat, lon)
@@ -254,13 +255,25 @@ def recommend_crops(
     date = _resolve_date(date)
     year = date[:4]
 
+    # 로그인한 사용자면 횟수 체크
+    if authorization:
+        token = authorization.replace("Bearer ", "")
+        user = auth_service.verify_token(token)
+        if user:
+            limit = payment_service.check_ai_limit(user["uid"])
+            if not limit["can_use"]:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"이번 달 AI 추천 횟수({limit['limit']}회)를 초과했습니다. 유료 플랜으로 업그레이드하세요!"
+                )
+            payment_service.increment_ai_usage(user["uid"])
+
     logger.info(f"AI 작물 추천 요청: {location} ({lat},{lon})")
     weather = weather_service.get_point_weather(lat, lon, date)
     soil    = soil_service.get_soil(lat, lon)
     pest    = pest_service.get_pest_yearly(lat, lon, year)
     result  = ai_service.recommend_crops(location, weather, soil, pest)
     return result
-
 
 @app.get("/api/ai/question", tags=["AI 작물추천"])
 def ask_question(
@@ -438,3 +451,121 @@ def get_stations():
         "count": len(weather_service.stations),
         "data": weather_service.stations,
     }
+
+
+# ════════════════════════════════════════════
+# 🗺️  카카오 주소 검색 API
+# ════════════════════════════════════════════
+
+from services.kakao_service import KakaoService
+kakao_service = KakaoService()
+
+
+@app.get("/api/kakao/address", tags=["카카오 지도"])
+def address_to_coord(
+    address: str = Query(..., description="주소", example="전북 군산시 미룡동"),
+):
+    """주소 → 좌표 변환 (지도 클릭 없이 주소로 검색할 때)"""
+    validate_location_name(address)
+    logger.info(f"주소 검색: {address}")
+    data = kakao_service.address_to_coord(address)
+    if data is None:
+        raise HTTPException(status_code=404, detail="해당 주소를 찾을 수 없습니다.")
+    return {"status": "success", "data": data}
+
+
+@app.get("/api/kakao/coord", tags=["카카오 지도"])
+def coord_to_address(
+    lat: float = Query(..., description="위도"),
+    lon: float = Query(..., description="경도"),
+):
+    """좌표 → 주소 변환 (지도 클릭했을 때 주소 표시)"""
+    validate_lat_lon(lat, lon)
+    logger.info(f"좌표 → 주소 변환: {lat},{lon}")
+    data = kakao_service.coord_to_address(lat, lon)
+    if data is None:
+        raise HTTPException(status_code=404, detail="해당 좌표의 주소를 찾을 수 없습니다.")
+    return {"status": "success", "data": data}
+
+
+@app.get("/api/kakao/search", tags=["카카오 지도"])
+def search_keyword(
+    keyword: str = Query(..., description="검색 키워드", example="군산 농협"),
+    lat: float = Query(default=None, description="중심 위도 (선택)"),
+    lon: float = Query(default=None, description="중심 경도 (선택)"),
+):
+    """키워드로 장소 검색 (농협, 농약사 등 주변 시설 검색)"""
+    logger.info(f"키워드 검색: {keyword}")
+    data = kakao_service.search_keyword(keyword, lat, lon)
+    return {"status": "success", "count": len(data), "data": data}
+
+# ════════════════════════════════════════════
+# 💳  결제 API
+# ════════════════════════════════════════════
+
+from services.payment_service import PaymentService
+payment_service = PaymentService()
+
+
+@app.get("/api/payment/plans", tags=["결제"])
+def get_plans():
+    """구독 플랜 목록"""
+    return {
+        "status": "success",
+        "data": {
+            "free": {"name": "무료", "price": 0, "ai_count": 10},
+            "basic": {"name": "베이직", "price": 3900, "ai_count": 30},
+            "premium": {"name": "프리미엄", "price": 9900, "ai_count": 999},
+        }
+    }
+
+
+@app.get("/api/payment/usage", tags=["결제"])
+def get_ai_usage(authorization: str = Header(...)):
+    """내 AI 사용 횟수 조회"""
+    uid = _get_uid(authorization)
+    data = payment_service.check_ai_limit(uid)
+    return {"status": "success", "data": data}
+
+
+@app.post("/api/payment/toss/confirm", tags=["결제"])
+def toss_confirm(
+    payment_key: str = Query(..., description="토스 결제키"),
+    order_id: str = Query(..., description="주문번호"),
+    amount: int = Query(..., description="결제금액"),
+    plan_id: str = Query(..., description="플랜 ID"),
+    authorization: str = Header(...),
+):
+    """토스페이먼츠 결제 승인"""
+    uid = _get_uid(authorization)
+    result = payment_service.toss_confirm_payment(payment_key, order_id, amount)
+    if result["status"] == "success":
+        payment_service.save_subscription(uid, plan_id, result["data"])
+    return result
+
+
+@app.post("/api/payment/kakao/ready", tags=["결제"])
+def kakao_ready(
+    plan_id: str = Query(..., description="플랜 ID (basic/premium)"),
+    order_id: str = Query(..., description="주문번호"),
+    authorization: str = Header(...),
+):
+    """카카오페이 결제 준비"""
+    uid = _get_uid(authorization)
+    return payment_service.kakao_ready_payment(uid, plan_id, order_id)
+
+
+@app.post("/api/payment/kakao/approve", tags=["결제"])
+def kakao_approve(
+    tid: str = Query(..., description="카카오페이 거래번호"),
+    pg_token: str = Query(..., description="카카오페이 토큰"),
+    order_id: str = Query(..., description="주문번호"),
+    plan_id: str = Query(..., description="플랜 ID"),
+    authorization: str = Header(...),
+):
+    """카카오페이 결제 승인"""
+    uid = _get_uid(authorization)
+    result = payment_service.kakao_approve_payment(uid, tid, pg_token, order_id)
+    if result["status"] == "success":
+        payment_service.save_subscription(uid, plan_id, result["data"])
+    return results

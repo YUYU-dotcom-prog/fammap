@@ -46,3 +46,14 @@ GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
 
 # Firebase 키 파일 경로
 FIREBASE_KEY_PATH: str = os.getenv("FIREBASE_KEY_PATH", "firebase_key.json")
+
+# 카카오 REST API 키
+KAKAO_API_KEY: str = os.getenv("KAKAO_API_KEY", "YOUR_KAKAO_API_KEY_HERE")
+
+# 토스페이먼츠
+TOSS_CLIENT_KEY: str = os.getenv("TOSS_CLIENT_KEY", "")
+TOSS_SECRET_KEY: str = os.getenv("TOSS_SECRET_KEY", "")
+
+# 카카오페이
+KAKAO_PAY_CLIENT_ID: str = os.getenv("KAKAO_PAY_CLIENT_ID", "")
+KAKAO_PAY_SECRET_KEY: str = os.getenv("KAKAO_PAY_SECRET_KEY", "")
