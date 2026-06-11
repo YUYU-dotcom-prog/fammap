@@ -1,0 +1,111 @@
+.history-container {
+  min-height: 100vh;
+  background: #f5f7f5;
+  padding: 20px;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  background: white;
+  padding: 15px 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.history-header h2 {
+  font-size: 20px;
+  color: #2c6e49;
+}
+
+.back-btn {
+  background: none;
+  border: 2px solid #2c6e49;
+  color: #2c6e49;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.back-btn:hover {
+  background: #2c6e49;
+  color: white;
+}
+
+.loading {
+  text-align: center;
+  padding: 50px;
+  color: #666;
+  font-size: 16px;
+}
+
+.empty {
+  text-align: center;
+  padding: 80px 20px;
+  color: #888;
+}
+
+.empty p {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.record-card {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.record-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.record-info h3 {
+  font-size: 16px;
+  color: #333;
+}
+
+.record-info p {
+  font-size: 13px;
+  color: #888;
+}
+
+.record-preview {
+  font-size: 14px;
+  color: #555;
+  line-height: 1.6;
+  margin-bottom: 15px;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 8px;
+}
+
+.delete-btn {
+  background: none;
+  border: 1px solid #ff6b6b;
+  color: #ff6b6b;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.delete-btn:hover {
+  background: #ff6b6b;
+  color: white;
+}

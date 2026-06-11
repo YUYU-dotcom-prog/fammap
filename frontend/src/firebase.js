@@ -1,4 +1,6 @@
+//데이터베이스 코드
 import { initializeApp } from 'firebase/app';
+//로그인 도구
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {

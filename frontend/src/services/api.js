@@ -43,3 +43,12 @@ export const getPlans = () => api.get('/api/payment/plans');
 export const getAIUsage = () => api.get('/api/payment/usage');
 
 export default api;
+
+// 추천 기록
+export const getRecommendations = () => api.get('/api/user/recommendations');
+export const deleteRecommendation = (id) => api.delete(`/api/user/recommendations/${id}`);
+
+// 즐겨찾기
+export const getFavorites = () => api.get('/api/user/favorites');
+export const addFavorite = (crop_name, location) => api.post('/api/user/favorites', null, { params: { crop_name, location } });
+export const deleteFavorite = (id) => api.delete(`/api/user/favorites/${id}`);

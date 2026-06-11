@@ -3,6 +3,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { getAIRecommend } from '../services/api';
 import { searchAddressKakao } from '../services/kakao';
+import ResultPage from './ResultPage';
 import '../styles/MainPage.css';
 
 function MainPage({ user }) {
@@ -10,6 +11,7 @@ function MainPage({ user }) {
   const [location, setLocation] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showResult, setShowResult] = useState(false);
 
   const handleSearch = async () => {
     if (!address.trim()) {
@@ -41,7 +43,7 @@ function MainPage({ user }) {
       );
       console.log('AI 결과:', res.data);
       setResult(res.data.recommendation);
-      
+      setShowResult(true);
     } catch (error) {
       if (error.response?.status === 429) {
         alert('이번 달 AI 추천 횟수를 초과했습니다. 유료 플랜으로 업그레이드하세요!');
@@ -57,6 +59,17 @@ function MainPage({ user }) {
     await signOut(auth);
     localStorage.removeItem('token');
   };
+
+  if (showResult) {
+    return (
+      <ResultPage
+        result={result}
+        location={address}
+        onBack={() => setShowResult(false)}
+        onSave={() => alert('저장됐어요!')}
+      />
+    );
+  }
 
   return (
     <div className="main-container">
@@ -98,17 +111,6 @@ function MainPage({ user }) {
             >
               {loading ? '🤖 AI 분석 중...' : '🌱 작물 추천받기'}
             </button>
-          </div>
-        )}
-
-        {result && (
-          <div className="result-card">
-            <h3>🤖 AI 작물 추천 결과</h3>
-            <div className="result-content">
-              {result.split('\n').map((line, i) => (
-                <p key={i}>{line}</p>
-              ))}
-            </div>
           </div>
         )}
       </main>
