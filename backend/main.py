@@ -249,7 +249,7 @@ def recommend_crops(
     date: str = Query(default=None, description="기준일자 YYYYMMDD"),
     authorization: str = Header(default=None),
 ):
-    """🌾 귀농인 맞춤 작물 추천 (기상+토양+병해충 데이터 AI 분석)"""
+    """🌾 귀농인 맞춤 작물 추천 (Firebase 사전수집 데이터 활용)"""
     validate_lat_lon(lat, lon)
     validate_location_name(location)
     date = _resolve_date(date)
@@ -269,10 +269,24 @@ def recommend_crops(
             payment_service.increment_ai_usage(user["uid"])
 
     logger.info(f"AI 작물 추천 요청: {location} ({lat},{lon})")
-    weather = weather_service.get_point_weather(lat, lon, date)
-    soil    = soil_service.get_soil(lat, lon)
-    pest    = pest_service.get_pest_yearly(lat, lon, year)
-    result  = ai_service.recommend_crops(location, weather, soil, pest)
+
+    # Firebase에서 가장 가까운 지점 데이터 조회
+    station_data = station_service.get_nearest_station_data(lat, lon)
+
+    if station_data:
+        # Firebase 데이터 사용 (API 호출 없음!)
+        weather = station_data.get("weather")
+        soil    = station_data.get("soil")
+        pest    = station_data.get("pest")
+        logger.info(f"Firebase 데이터 사용: {station_data.get('station_name')}")
+    else:
+        # Firebase 데이터 없으면 직접 API 호출
+        logger.info("Firebase 데이터 없음 → 직접 API 호출")
+        weather = weather_service.get_point_weather(lat, lon, date)
+        soil    = soil_service.get_soil(lat, lon)
+        pest    = pest_service.get_pest_yearly(lat, lon, year)
+
+    result = ai_service.recommend_crops(location, weather, soil, pest)
     return result
 
 @app.get("/api/ai/question", tags=["AI 작물추천"])
@@ -569,3 +583,46 @@ def kakao_approve(
     if result["status"] == "success":
         payment_service.save_subscription(uid, plan_id, result["data"])
     return results
+
+# ════════════════════════════════════════════
+# 🗄️  Firebase 사전수집 데이터 API
+# ════════════════════════════════════════════
+
+from services.station_service import StationService
+station_service = StationService()
+
+
+@app.get("/api/station/nearest", tags=["사전수집 데이터"])
+def get_nearest_station(
+    lat: float = Query(..., description="위도"),
+    lon: float = Query(..., description="경도"),
+):
+    """가장 가까운 지점 데이터 조회 (AI 추천용)"""
+    validate_lat_lon(lat, lon)
+    cache_key = cache.make_key("station_nearest", lat, lon)
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    logger.info(f"가장 가까운 지점 조회: {lat},{lon}")
+    data = station_service.get_nearest_station_data(lat, lon)
+    if data is None:
+        raise HTTPException(status_code=404, detail="데이터가 없습니다.")
+    result = {"status": "success", "data": data}
+    cache.set(cache_key, result, "weather")
+    return result
+
+
+@app.get("/api/station/all", tags=["사전수집 데이터"])
+def get_all_stations():
+    """전체 지점 데이터 조회 (지도용)"""
+    cache_key = cache.make_key("station_all")
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    logger.info("전체 지점 데이터 조회")
+    data = station_service.get_all_stations_data()
+    result = {"status": "success", "count": len(data), "data": data}
+    cache.set(cache_key, result, "weather")
+    return result
