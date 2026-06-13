@@ -1,81 +1,112 @@
 """
-🚀 전국 농업기상 데이터 수집 및 Firebase 원샷 백업 스크립트
+🌾 농업 데이터 사전 수집 스크립트
+매일 새벽 실행해서 Firebase에 저장
+실행: python scripts/collect_data.py
 """
 
 import sys
 import os
-from datetime import datetime
-import time
-
-# 프로젝트 루트 경로 주입
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.weather_service import WeatherService
-from firebase_admin import firestore
+import time
+from datetime import datetime, timedelta
 import firebase_admin
+from firebase_admin import credentials, firestore
+from core.config import FIREBASE_KEY_PATH
+from services.weather_service import WeatherService
+from services.soil_service import SoilService
+from services.pest_service import PestService
 
-# Firebase 안전 초기화
+# Firebase 초기화
 if not firebase_admin._apps:
-    firebase_admin.initialize_app()
+    cred = credentials.Certificate(FIREBASE_KEY_PATH)
+    firebase_admin.initialize_app(cred)
 
 db = firestore.client()
+weather_service = WeatherService()
+soil_service    = SoilService()
+pest_service    = PestService()
+
+# 대한민국 주요 농업지역 25개 지점
+stations = [
+    {"id": "seoul",     "name": "서울",   "sido": "서울",  "lat": 37.5665, "lon": 126.9780},
+    {"id": "incheon",   "name": "인천",   "sido": "인천",  "lat": 37.4563, "lon": 126.7052},
+    {"id": "suwon",     "name": "수원",   "sido": "경기",  "lat": 37.2636, "lon": 127.0286},
+    {"id": "yangpyeong","name": "양평",   "sido": "경기",  "lat": 37.4914, "lon": 127.4875},
+    {"id": "chuncheon", "name": "춘천",   "sido": "강원",  "lat": 37.8813, "lon": 127.7298},
+    {"id": "wonju",     "name": "원주",   "sido": "강원",  "lat": 37.3422, "lon": 127.9201},
+    {"id": "gangneung", "name": "강릉",   "sido": "강원",  "lat": 37.7519, "lon": 128.8761},
+    {"id": "cheonan",   "name": "천안",   "sido": "충남",  "lat": 36.8151, "lon": 127.1139},
+    {"id": "cheongju",  "name": "청주",   "sido": "충북",  "lat": 36.6424, "lon": 127.4890},
+    {"id": "hongseong", "name": "홍성",   "sido": "충남",  "lat": 36.6010, "lon": 126.6608},
+    {"id": "nonsan",    "name": "논산",   "sido": "충남",  "lat": 36.1868, "lon": 127.0988},
+    {"id": "jeonju",    "name": "전주",   "sido": "전북",  "lat": 35.8242, "lon": 127.1480},
+    {"id": "gunsan",    "name": "군산",   "sido": "전북",  "lat": 35.9677, "lon": 126.7368},
+    {"id": "gimje",     "name": "김제",   "sido": "전북",  "lat": 35.8033, "lon": 126.8803},
+    {"id": "naju",      "name": "나주",   "sido": "전남",  "lat": 35.0160, "lon": 126.7108},
+    {"id": "haenam",    "name": "해남",   "sido": "전남",  "lat": 34.5739, "lon": 126.5990},
+    {"id": "suncheon",  "name": "순천",   "sido": "전남",  "lat": 34.9506, "lon": 127.4874},
+    {"id": "daegu",     "name": "대구",   "sido": "경북",  "lat": 35.8714, "lon": 128.6014},
+    {"id": "andong",    "name": "안동",   "sido": "경북",  "lat": 36.5684, "lon": 128.7294},
+    {"id": "sangju",    "name": "상주",   "sido": "경북",  "lat": 36.4108, "lon": 128.1591},
+    {"id": "miryang",   "name": "밀양",   "sido": "경남",  "lat": 35.5037, "lon": 128.7461},
+    {"id": "jinju",     "name": "진주",   "sido": "경남",  "lat": 35.1799, "lon": 128.1076},
+    {"id": "changwon",  "name": "창원",   "sido": "경남",  "lat": 35.2279, "lon": 128.6811},
+    {"id": "jeju",      "name": "제주",   "sido": "제주",  "lat": 33.4996, "lon": 126.5312},
+    {"id": "seogwipo",  "name": "서귀포", "sido": "제주",  "lat": 33.2541, "lon": 126.5600},
+]
 
 
 def collect_and_save():
-    print("📡 [Batch] 전국 기상 데이터 수집 및 Firebase 원샷 패키징 시작...")
+    print("📡 collect_and_save 함수 실행!")
 
-    weather_service = WeatherService()
-    today_str = datetime.now().strftime("%Y%m%d")
+    date  = (datetime.today() - timedelta(days=1)).strftime("%Y%m%d")
+    year  = date[:4]
+    total = len(stations)
 
-    korea_weather_payload = {}
-    stations_list = getattr(weather_service, "stations", [])
+    print(f"\n🌾 데이터 수집 시작 ({date})")
+    print(f"   총 {total}개 지점\n")
 
-    if not stations_list:
-        print("❌ [Error] weather_service에서 stations 리스트를 참조할 수 없습니다.")
-        return
+    success = 0
+    fail    = 0
 
-    total = len(stations_list)
-    print(f"📊 총 {total}개 지점 데이터를 수집합니다.")
+    for i, st in enumerate(stations, 1):
+        print(f"  [{i:2d}/{total}] {st['name']} 수집 중...")
 
-    for idx, st in enumerate(stations_list, 1):
-        st_id = st["id"]
-        print(f"🔄 [{idx}/{total}] {st['name']} 데이터 수집 중...")
+        try:
+            weather = weather_service.get_point_weather(st["lat"], st["lon"], date)
+            time.sleep(0.2)
+            soil = soil_service.get_soil(st["lat"], st["lon"])
+            time.sleep(0.2)
+            pest = pest_service.get_pest_yearly(st["lat"], st["lon"], year)
+            time.sleep(0.2)
 
-        # 공공 API 연동 호출
-        point_weather = weather_service.get_point_weather(
-            st["lat"], st["lon"], today_str
-        )
+            doc_id = f"{st['id']}_{date}"
+            db.collection("station_data").document(doc_id).set({
+                "station_id":   st["id"],
+                "station_name": st["name"],
+                "sido":         st["sido"],
+                "lat":          st["lat"],
+                "lon":          st["lon"],
+                "date":         date,
+                "weather":      weather,
+                "soil":         soil,
+                "pest":         pest,
+                "updated_at":   datetime.now().isoformat(),
+            })
 
-        if point_weather:
-            # 원샷 패키징을 위한 데이터 경량화 (부모 레벨에 이미 명시되므로 제외)
-            point_weather.pop("lat", None)
-            point_weather.pop("lon", None)
+            print(f"         ✅ 저장 완료")
+            success += 1
 
-            korea_weather_payload[st_id] = {
-                "name": st["name"],
-                "sido": st["sido"],
-                **point_weather,
-            }
-        
-        # 외부 API 과부하 방지 딜레이
+        except Exception as e:
+            print(f"         ❌ 오류: {e}")
+            fail += 1
+
         time.sleep(0.3)
 
-    # 🔥 [최적화 핵심] 수집 완료된 데이터를 단 1개의 문서에 몽땅 압축하여 원샷 저장
-    if korea_weather_payload:
-        doc_ref = db.collection("weather_data").document("korea_summary")
-        doc_ref.set(
-            {
-                "date": today_str,
-                "updated_at": int(datetime.now().timestamp()),
-                "stations": korea_weather_payload,
-            }
-        )
-        print("✨ [Firebase Success] 단 1회의 쓰기 비용으로 전국 날씨 요약본 저장 완료!")
-    else:
-        print("⚠️ [Warning] 수집된 데이터가 없어 Firebase 업데이트를 생략합니다.")
+    print(f"\n✅ 완료! 성공: {success}개 / 실패: {fail}개")
 
 
+print("🚀 스크립트 시작!")
 if __name__ == "__main__":
-    print("🚀 스크립트 가동")
     collect_and_save()
-    print("🏁 스크립트 종료")
