@@ -1,80 +1,81 @@
 """
-🌾 농업 데이터 사전 수집 스크립트
-매일 새벽 실행해서 Firebase에 저장
-실행: python scripts/collect_data.py
+🚀 전국 농업기상 데이터 수집 및 Firebase 원샷 백업 스크립트
 """
-print("🚀 스크립트 시작!")
+
 import sys
 import os
+from datetime import datetime
+import time
+
+# 프로젝트 루트 경로 주입
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import time
-from datetime import datetime, timedelta
-import firebase_admin
-from firebase_admin import credentials, firestore
-from core.config import FIREBASE_KEY_PATH
 from services.weather_service import WeatherService
-from services.soil_service import SoilService
-from services.pest_service import PestService
+from firebase_admin import firestore
+import firebase_admin
 
-# Firebase 초기화
+# Firebase 안전 초기화
 if not firebase_admin._apps:
-    cred = credentials.Certificate(FIREBASE_KEY_PATH)
-    firebase_admin.initialize_app(cred)
+    firebase_admin.initialize_app()
 
 db = firestore.client()
-weather_service = WeatherService()
-soil_service    = SoilService()
-pest_service    = PestService()
 
-print("📡 collect_and_save 함수 실행!")
+
 def collect_and_save():
-    date  = (datetime.today() - timedelta(days=1)).strftime("%Y%m%d")
-    year  = date[:4]
-    total = len(weather_service.stations)
+    print("📡 [Batch] 전국 기상 데이터 수집 및 Firebase 원샷 패키징 시작...")
 
-    print(f"\n🌾 데이터 수집 시작 ({date})")
-    print(f"   총 {total}개 지점\n")
+    weather_service = WeatherService()
+    today_str = datetime.now().strftime("%Y%m%d")
 
-    success = 0
-    fail    = 0
+    korea_weather_payload = {}
+    stations_list = getattr(weather_service, "stations", [])
 
-    for i, st in enumerate(weather_service.stations, 1):
-        print(f"  [{i:2d}/{total}] {st['name']} 수집 중...")
+    if not stations_list:
+        print("❌ [Error] weather_service에서 stations 리스트를 참조할 수 없습니다.")
+        return
 
-        try:
-            weather = weather_service.get_point_weather(st["lat"], st["lon"], date)
-            time.sleep(0.2)
-            soil = soil_service.get_soil(st["lat"], st["lon"])
-            time.sleep(0.2)
-            pest = pest_service.get_pest_yearly(st["lat"], st["lon"], year)
-            time.sleep(0.2)
+    total = len(stations_list)
+    print(f"📊 총 {total}개 지점 데이터를 수집합니다.")
 
-            doc_id = f"{st['id']}_{date}"
-            db.collection("station_data").document(doc_id).set({
-                "station_id":   st["id"],
-                "station_name": st["name"],
-                "sido":         st["sido"],
-                "lat":          st["lat"],
-                "lon":          st["lon"],
-                "date":         date,
-                "weather":      weather,
-                "soil":         soil,
-                "pest":         pest,
-                "updated_at":   datetime.now().isoformat(),
-            })
+    for idx, st in enumerate(stations_list, 1):
+        st_id = st["id"]
+        print(f"🔄 [{idx}/{total}] {st['name']} 데이터 수집 중...")
 
-            print(f"         ✅ 저장 완료")
-            success += 1
+        # 공공 API 연동 호출
+        point_weather = weather_service.get_point_weather(
+            st["lat"], st["lon"], today_str
+        )
 
-        except Exception as e:
-            print(f"         ❌ 오류: {e}")
-            fail += 1
+        if point_weather:
+            # 원샷 패키징을 위한 데이터 경량화 (부모 레벨에 이미 명시되므로 제외)
+            point_weather.pop("lat", None)
+            point_weather.pop("lon", None)
 
+            korea_weather_payload[st_id] = {
+                "name": st["name"],
+                "sido": st["sido"],
+                **point_weather,
+            }
+        
+        # 외부 API 과부하 방지 딜레이
         time.sleep(0.3)
 
-    print(f"\n✅ 완료! 성공: {success}개 / 실패: {fail}개")
+    # 🔥 [최적화 핵심] 수집 완료된 데이터를 단 1개의 문서에 몽땅 압축하여 원샷 저장
+    if korea_weather_payload:
+        doc_ref = db.collection("weather_data").document("korea_summary")
+        doc_ref.set(
+            {
+                "date": today_str,
+                "updated_at": int(datetime.now().timestamp()),
+                "stations": korea_weather_payload,
+            }
+        )
+        print("✨ [Firebase Success] 단 1회의 쓰기 비용으로 전국 날씨 요약본 저장 완료!")
+    else:
+        print("⚠️ [Warning] 수집된 데이터가 없어 Firebase 업데이트를 생략합니다.")
 
 
 if __name__ == "__main__":
+    print("🚀 스크립트 가동")
     collect_and_save()
+    print("🏁 스크립트 종료")
