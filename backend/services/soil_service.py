@@ -27,14 +27,22 @@ class SoilService:
 
         # 2. 캐시에 없으면 딱 한 번만 외부 API 호출
         print(f"🌱 [Soil DB] ({grid_lat}, {grid_lon}) 격자 토양 데이터 새로 수집 중...")
-        raw = fetch_soil(lat, lon)
-        if raw is None:
+
+        try:
+            raw = fetch_soil(lat, lon)
+        except Exception as e:
+            print(f"⚠️ [Soil API Error] 토양 데이터 수집 실패: {e}")
+            return None
+
+        # 3. 빈 응답 체크
+        if not raw:
+            print(f"⚠️ [Soil API Error] 빈 응답 수신 ({grid_lat}, {grid_lon})")
             return None
 
         if isinstance(raw, list):
             raw = raw[0]
 
-        # 3. 데이터 정제 (기존 포맷 100% 유지)
+        # 4. 데이터 정제 (기존 포맷 100% 유지)
         result = {
             "lat": lat,
             "lon": lon,
@@ -48,7 +56,7 @@ class SoilService:
             "ec": _f(raw.get("ec")),                    # 전기전도도 (dS/m)
         }
         
-        # 🛡️ 4. 토양은 변동성이 극도로 낮으므로 작성하신 'soil' TTL (24시간) 동안 캐싱 봉인
+        # 🛡️ 5. 토양은 변동성이 극도로 낮으므로 작성하신 'soil' TTL (24시간) 동안 캐싱 봉인
         cache.set(cache_key, result, ttl_type="soil")
         return result
 

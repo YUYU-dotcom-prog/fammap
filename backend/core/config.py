@@ -10,14 +10,9 @@ load_dotenv()  # .env 파일 자동 로드
 
 # ✅ 공공데이터포털 인코딩 키를 .env 파일에 넣거나 환경변수로 설정하세요
 
-# 농업기상 API 키
-WEATHER_API_KEY: str = os.getenv("FARMMAP_WEATHER_API_KEY", "YOUR_WEATHER_API_KEY_HERE")
-
-# 토양검정 API 키
-SOIL_API_KEY: str = os.getenv("FARMMAP_SOIL_API_KEY", "YOUR_SOIL_API_KEY_HERE")
-
-# 병해충발생 API 키
-PEST_API_KEY: str = os.getenv("FARMMAP_PEST_API_KEY", "YOUR_PEST_API_KEY_HERE")
+WEATHER_API_KEY: str = os.getenv("FARMMAP_WEATHER_API_KEY")
+SOIL_API_KEY: str = os.getenv("FARMMAP_SOIL_API_KEY")
+PEST_API_KEY: str = os.getenv("FARMMAP_PEST_API_KEY")
 
 # 각 API BASE URL
 WEATHER_BASE_URL: str = (
